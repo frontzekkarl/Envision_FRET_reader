@@ -16,7 +16,7 @@ os.chdir('/home/kajo/Dokumente/automation_camp/git/Envision_FRET_reader')
 #%% enter and read filenames
 #filename=input('enter filename with extension: ')
 #read csv
-data=pd.read_excel('KFEX224.xls',sep=",")
+data=pd.read_excel('FRET090818.xls',sep=",")
 #exclude columns right of plate
 # for initial csv save: 
 #data=data.drop(data.columns.to_series()["Humidity":"date"],axis=1) 
@@ -57,7 +57,7 @@ array_dict['plates']=pd.to_numeric(data['row'][data['row'].astype(str).str.isdig
 # retrieve number of repeats per plate
 # get repeat numbers of plates
 plate_range=list(range(1,array_dict['plates']+1,1))
-repeats=70
+repeats=97
 #for x in plate_range:
  #       repeat_nr=data.loc[data['1']==str(x)]
   #      max_series=pd.to_numeric(repeat_nr['1'].loc[repeat_nr['1'].astype(str).str.isdigit()]).max()
@@ -77,7 +77,7 @@ def add_to_dataset():
     #gather first row per plate
     row_id_start=[(9+(i*20)) for i in range(0,tot_reads,1)]
     #create empty np array with size of reads x rows x columns
-    foo=np.empty([tot_reads,8,12])
+    foo=np.ones([tot_reads,8,12])
     #transfer reads to xarray
     for i in range(0,tot_reads,1):
         foo[i]=data.iloc[row_id_start[i]:row_id_start[i]+8,1:13]
@@ -91,7 +91,7 @@ def add_to_dataset():
     #gather first row per plate
     row_id_start=[(10+(i*20)) for i in range(0,tot_reads,1)]
     #create empty np array with size of reads x rows x columns
-    foo=np.empty([tot_reads,8,12])
+    foo=np.ones([tot_reads,8,12])
     #transfer reads to xarray
     for i in range(0,tot_reads,1):
         foo[i]=data.iloc[row_id_start[i]:row_id_start[i]+8,1:13]
@@ -101,8 +101,8 @@ def add_to_dataset():
 add_to_dataset()
 #%% calculate NET FRET - optimized for columns 2-4 (->check columns in for loop in net_fret)
 #well=np.array([[r_ow,0],[r_ow,1],[r_ow,2]])
-time=[x*(70/60) for x in range(1,int((tot_reads/2)+1))]
-t_array=np.array(time)
+#time=[x*(/60) for x in range(1,int((tot_reads/2)+1))]
+t_array=np.array(list(range(0,97,1)))
 rows=np.array([0,1,2,3,4,5,6,7])
 replicates=[0,1,2,3,4,5,6,7,8,9,10,11]
 listiter=list(itertools.product(rows,replicates))
@@ -121,6 +121,20 @@ net_fret()
 #nff=np.array([netfret_normalized[i].mean(axis=0) for i in rows])
 #normlizd=1/(nf/normalized)
 #normlizd.to_csv('H1-3.csv')
+#%%
+# normalize all measurements to baseline
+baseline_mean_=netfret_normalized[3,1:4,:].mean(axis=0)
+netfret_norm_per_timepoint=[netfret_normalized[:,:,i]/baseline_mean[i] for i in range(0,96,1)]
+    
+    
+#%% calculate baseline per replicate
+baseline=np.random.rand(len(rows),len(replicates))
+for (i,j) in listiter:
+    baseline[i,j]=netfret_normalized[i,j,1:7].mean() 
+netfret_normalized_norm=np.random.rand(len(rows),len(replicates),len(range(0,tot_reads-1,2)))
+for (i,j) in listiter:
+    netfret_normalized_norm[i,j]=netfret_normalized[i,j]/baseline[i,j]
+    
 #%%
 g, axes=plt.subplots(2,4)
 sns.set_style('darkgrid')
@@ -145,17 +159,20 @@ for i in range(0,8):
 #plt.show()
 #plt.show()
  #   plt.plot([0,t_array[-1]],[1,1],linewidth=2,ax=axes[i%8])
- #%%
+ #%% make list of all possible well names
+colnames_str=[str(x) for x in colnames]
+labels_columns=list(map(''.join,list(itertools.product(rownames,colnames_str))))
+
  #%% for KFEX224
  #   -----------
 #plt.figure(figsize=(5,6))
 #names=['mPrP$_{23-50}$ 10$^{-9}$M','hPrP$_{23-231}$ 10$^{-8}$M','hPrP$_{23-231}$ 10$^{-9}$M','hPrP$_{23-231}$ 10$^{-10}$M','hPrP$_{23-231}$ 10$^{-11}$M','hPrP$_{23-231}$ 10$^{-12}$M','hPrP$_{23-231}$ 10$^{-13}$M','assay buffer']
-fig, axes =plt.subplots(nrows=1,ncols=2,figsize=(16,10))
+fig, axes =pl.subplots(nrows=1,ncols=2,figsize=(16,10))
 #axes=axes.flatten()
 for i in [0,7]:
 #axes.plot([t_array[10],t_array[10]],[0.8,1.25],'r-')
     #axes[i].plot([0,t_array[-1]],[1,1],'-')
-    plt.scatter(x=list(range(1,66,1)), y=nf_norm[3,2],s=20)
+    plt.scatter(x=list(range(1,98,1)), y=netfret_norm_per_timepoint[0,2],s=20)
     #axes[i].set(title=names[i])
     axes[i].set_xlabel('time [min]')
     axes[i].set_ylabel('ch2/ch1')
@@ -169,11 +186,17 @@ for i in [0,7]:
  # |---------------------------|
  
  # initialize np array for [number of reads, len(cols)*len(rows)]
- per_columns=np.random.rand(len(range(0,tot_reads-1,2)),len(rows)*len(replicates))
+ # add to csv without first measurement
+ per_columns_norm=np.random.rand(len(range(0,tot_reads,2)),len(rows)*len(replicates))
+ for i in range(0,96,1):
+         per_columns_norm[:,i]=netfret_normalized_norm[listiter[i][0],listiter[i][1],:]
+ percolnorm=pd.DataFrame(data=per_columns_norm)
+percolnorm.columns=labels_columns
+per_columns=np.random.rand(len(range(0,tot_reads-1,2)),len(rows)*len(replicates))
  for i in range(0,96,1):
          per_columns[:,i]=netfret_normalized[listiter[i][0],listiter[i][1],:]
- percol=pd.DataFrame(data=per_columns)        
-         
+ percol=pd.DataFrame(data=per_columns)   
+percol.columns=labels_columns    
 #%%     
 for (i,j) in list(enumerate(listiter)):
     print(i,j)
